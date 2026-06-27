@@ -44,6 +44,24 @@ class TestValidatePayload:
         with pytest.raises(PayloadError, match="dataset_zip_url"):
             validate_payload({"model_type": "sdxl", "trigger_word": "tw"})
 
+    def test_dataset_r2_prefix_only_valid(self):
+        job = validate_payload({
+            "model_type": "krea2",
+            "dataset_r2_prefix": "training-datasets/abc/images",
+            "trigger_word": "tw",
+        })
+        assert job.dataset_r2_prefix == "training-datasets/abc/images"
+        assert job.dataset_zip_url == ""
+
+    def test_both_dataset_sources_rejected(self):
+        with pytest.raises(PayloadError, match="exactly one"):
+            validate_payload({
+                "model_type": "krea2",
+                "dataset_zip_url": "http://x.com/d.zip",
+                "dataset_r2_prefix": "training-datasets/abc/images",
+                "trigger_word": "tw",
+            })
+
     def test_missing_trigger_word(self):
         with pytest.raises(PayloadError, match="trigger_word"):
             validate_payload({"model_type": "sdxl", "dataset_zip_url": "http://x.com/d.zip"})

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dataset import download_dataset, extract_zip, validate_dataset
+from dataset import download_dataset, download_dataset_prefix, extract_zip, validate_dataset
 
 
 class TestExtractZip:
@@ -101,3 +101,37 @@ class TestDownloadDataset:
         dest = tmp_path / "extracted"
         with pytest.raises(zipfile.BadZipFile):
             extract_zip(corrupt_zip, dest)
+
+
+class TestDownloadDatasetPrefix:
+    def _mock_s3(self, keys):
+        s3 = MagicMock()
+        s3.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": k} for k in keys]}
+        ]
+        s3.download_file.side_effect = lambda bucket, key, dest: Path(dest).write_bytes(b"x")
+        return s3
+
+    def test_downloads_prefix_flat(self, tmp_path):
+        keys = [
+            "training-datasets/J/images/a.png",
+            "training-datasets/J/images/a.txt",
+            "training-datasets/J/images/b.jpg",
+            "training-datasets/J/images/",  # directory placeholder — skipped
+        ]
+        s3 = self._mock_s3(keys)
+        with patch("uploader._get_s3_client", return_value=(s3, "wan-outputs", "auto")):
+            download_dataset_prefix("training-datasets/J/images", tmp_path / "ds")
+        files = sorted(f.name for f in (tmp_path / "ds").iterdir())
+        assert files == ["a.png", "a.txt", "b.jpg"]
+
+    def test_raises_without_credentials(self, tmp_path):
+        with patch("uploader._get_s3_client", return_value=(None, None, None)):
+            with pytest.raises(ValueError, match="credentials"):
+                download_dataset_prefix("p", tmp_path / "ds")
+
+    def test_raises_on_empty_prefix(self, tmp_path):
+        s3 = self._mock_s3([])
+        with patch("uploader._get_s3_client", return_value=(s3, "wan-outputs", "auto")):
+            with pytest.raises(ValueError, match="No objects"):
+                download_dataset_prefix("p", tmp_path / "ds")

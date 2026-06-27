@@ -16,7 +16,13 @@ from config import (
     TrainingResult,
     validate_payload,
 )
-from dataset import count_dataset_media, download_dataset, extract_zip, validate_dataset
+from dataset import (
+    count_dataset_media,
+    download_dataset,
+    download_dataset_prefix,
+    extract_zip,
+    validate_dataset,
+)
 from model_downloader import ensure_aria2c, ensure_model
 from yaml_generator import generate_config
 from trainer import run_training
@@ -167,9 +173,12 @@ def _handler_inner(event):
 
         # --- Dataset ---
         t0 = time.time()
-        zip_path = job.job_dir / "dataset.zip"
-        download_dataset(job.dataset_zip_url, zip_path)
-        extract_zip(zip_path, job.dataset_dir)
+        if job.dataset_r2_prefix:
+            download_dataset_prefix(job.dataset_r2_prefix, job.dataset_dir)
+        else:
+            zip_path = job.job_dir / "dataset.zip"
+            download_dataset(job.dataset_zip_url, zip_path)
+            extract_zip(zip_path, job.dataset_dir)
         unmatched = validate_dataset(job.dataset_dir)
         if unmatched:
             logger.warning(f"Unmatched files (no captions): {unmatched}")

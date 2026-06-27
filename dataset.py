@@ -36,6 +36,39 @@ def download_dataset(url: str, dest_path: Path) -> None:
     logger.info(f"Downloaded {downloaded / (1024*1024):.1f}MB to {dest_path}")
 
 
+def download_dataset_prefix(prefix: str, dest_dir: Path) -> None:
+    """Download every object under an R2 prefix into dest_dir (flat).
+
+    Alternative to a zip URL — mirrors the Modal trainer's r2_download_dataset:
+    list_objects_v2 + download_file. Reuses the uploader's configured R2/S3 client.
+    """
+    from uploader import _get_s3_client  # reuse the same R2/S3 config
+
+    s3, bucket, _ = _get_s3_client()
+    if s3 is None:
+        raise ValueError(
+            "dataset_r2_prefix given but no R2/S3 credentials configured"
+        )
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    norm_prefix = prefix.rstrip("/") + "/"
+    logger.info(f"Downloading dataset from r2://{bucket}/{norm_prefix}")
+
+    count = 0
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=norm_prefix):
+        for obj in page.get("Contents", []):
+            name = obj["Key"].split("/")[-1]
+            if not name:  # skip "directory" placeholder keys
+                continue
+            s3.download_file(bucket, obj["Key"], str(dest_dir / name))
+            count += 1
+
+    if count == 0:
+        raise ValueError(f"No objects found under R2 prefix '{norm_prefix}'")
+    logger.info(f"Downloaded {count} files from r2://{bucket}/{norm_prefix}")
+
+
 def extract_zip(zip_path: Path, dest_dir: Path) -> None:
     """Extract a zip file, handling nested single-folder zips and skipping __MACOSX."""
     dest_dir.mkdir(parents=True, exist_ok=True)

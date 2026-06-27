@@ -57,15 +57,17 @@ Reuse existing helpers (`config.rename_output`, `uploader._detect_variant`, `upl
 ```json
 { "input": {
   "model_type": "krea2",
-  "dataset_zip_url": "<presigned wan-outputs zip of training-datasets/<jobId>/images/>",
+  "dataset_r2_prefix": "training-datasets/<jobId>/images",
   "trigger_word": "<trigger>",
   "config_overrides": { "epochs": 80, "save_every_n_epochs": 10,
                         "optimizer.lr": 1e-4, "adapter.rank": 32, "dataset.num_repeats": 1 },
   "webhook_url": "<supabase>/functions/v1/training-webhook?job_id=<wandashJobId>" } }
 ```
+The fork accepts **exactly one** of `dataset_r2_prefix` (lists+downloads from `wan-outputs` directly,
+mirroring Modal's `dataset_path` — preferred, no zip) **or** `dataset_zip_url` (a download URL).
 `config_overrides` keys are exactly this fork's `overrides_translator` allow-list. wan-dash-side work
-(out of scope): add `krea2` to its model registry + cost table; zip the prefix; store the RunPod job id;
-route AI-Toolkit jobs to the new RunPod endpoint.
+(out of scope): add `krea2` to its model registry + cost table; pass the same `training-datasets/<jobId>/images`
+prefix it already builds for Modal; store the RunPod job id; route AI-Toolkit jobs to the new RunPod endpoint.
 
 ## Verification
 

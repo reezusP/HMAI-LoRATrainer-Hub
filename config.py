@@ -125,6 +125,9 @@ class TrainingJob:
     # Optional outbound completion webhook (wan-dash integration). When set, the
     # handler POSTs a {type:"train", status, lora_files, checkpoints, ...} payload here.
     webhook_url: str | None = None
+    # Alternative to dataset_zip_url: an R2 prefix to list+download directly
+    # (mirrors the Modal trainer). Exactly one of zip_url / r2_prefix is provided.
+    dataset_r2_prefix: str | None = None
 
     @property
     def is_wan22(self) -> bool:
@@ -331,10 +334,15 @@ def validate_payload(raw: dict[str, Any]) -> TrainingJob:
         )
 
     dataset_zip_url = raw.get("dataset_zip_url")
-    if not dataset_zip_url:
-        raise PayloadError("Missing required field: dataset_zip_url")
-    if not isinstance(dataset_zip_url, str):
+    dataset_r2_prefix = raw.get("dataset_r2_prefix")
+    if bool(dataset_zip_url) == bool(dataset_r2_prefix):
+        raise PayloadError(
+            "Provide exactly one of dataset_zip_url or dataset_r2_prefix"
+        )
+    if dataset_zip_url is not None and not isinstance(dataset_zip_url, str):
         raise PayloadError("dataset_zip_url must be a string")
+    if dataset_r2_prefix is not None and not isinstance(dataset_r2_prefix, str):
+        raise PayloadError("dataset_r2_prefix must be a string")
 
     trigger_word = raw.get("trigger_word")
     if not trigger_word:
@@ -390,13 +398,14 @@ def validate_payload(raw: dict[str, Any]) -> TrainingJob:
     return TrainingJob(
         job_id=job_id,
         model_type=model_type,
-        dataset_zip_url=dataset_zip_url,
+        dataset_zip_url=dataset_zip_url or "",
         trigger_word=trigger_word.strip(),
         config_overrides=config_overrides,
         civitai_model_id=civitai_model_id,
         noise_variant=noise_variant,
         smoke=smoke,
         webhook_url=webhook_url,
+        dataset_r2_prefix=dataset_r2_prefix,
     )
 
 
