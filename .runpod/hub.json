@@ -1,0 +1,60 @@
+{
+  "title": "HMAI LoRA Trainer",
+  "description": "Train LoRAs for 9 diffusion model families (SDXL, Wan 2.2, Qwen-Image, FLUX.2 Klein, Krea 2, Z-Image, Ideogram 4) on a single GPU. Send a dataset zip + trigger word; get back LoRA .safetensors. Built on AI-Toolkit.",
+  "type": "serverless",
+  "category": "image",
+  "config": {
+    "runsOn": "GPU",
+    "gpuCount": 1,
+    "gpuIds": "HOPPER_141,AMPERE_80,ADA_80_PRO",
+    "containerDiskInGb": 60,
+    "env": [
+      {
+        "key": "HF_TOKEN",
+        "input": {
+          "name": "Hugging Face token",
+          "type": "string",
+          "description": "Required only for gated base models (e.g. FLUX.2, Ideogram 4).",
+          "default": "",
+          "advanced": true
+        }
+      },
+      {
+        "key": "AWS_ACCESS_KEY_ID",
+        "input": { "name": "S3 access key", "type": "string", "description": "S3 output upload (optional — without storage the job returns local paths only).", "default": "", "advanced": true }
+      },
+      {
+        "key": "AWS_SECRET_ACCESS_KEY",
+        "input": { "name": "S3 secret key", "type": "string", "description": "S3 output upload secret.", "default": "", "advanced": true }
+      },
+      {
+        "key": "S3_BUCKET",
+        "input": { "name": "S3 bucket", "type": "string", "description": "Bucket for uploaded LoRAs.", "default": "", "advanced": true }
+      },
+      {
+        "key": "S3_REGION",
+        "input": { "name": "S3 region", "type": "string", "description": "S3 region.", "default": "us-east-1", "advanced": true }
+      },
+      {
+        "key": "R2_ACCOUNT_ID",
+        "input": { "name": "Cloudflare R2 account id", "type": "string", "description": "Use R2 instead of AWS S3 (R2 wins if both are set).", "default": "", "advanced": true }
+      },
+      {
+        "key": "R2_ACCESS_KEY_ID",
+        "input": { "name": "R2 access key", "type": "string", "description": "R2 output upload.", "default": "", "advanced": true }
+      },
+      {
+        "key": "R2_SECRET_ACCESS_KEY",
+        "input": { "name": "R2 secret key", "type": "string", "description": "R2 output upload secret.", "default": "", "advanced": true }
+      },
+      {
+        "key": "R2_BUCKET",
+        "input": { "name": "R2 bucket", "type": "string", "description": "R2 bucket for uploaded LoRAs.", "default": "", "advanced": true }
+      },
+      {
+        "key": "CIVITAI_API_KEY",
+        "input": { "name": "CivitAI API key", "type": "string", "description": "Only for SDXL training on a CivitAI base checkpoint (civitai_model_id).", "default": "", "advanced": true }
+      }
+    ]
+  }
+}
