@@ -1,8 +1,0 @@
-{
-  "input": {
-    "smoke": true,
-    "model_type": "sdxl",
-    "dataset_zip_url": "https://example.com/placeholder.zip",
-    "trigger_word": "hmtest"
-  }
-}
