@@ -146,7 +146,9 @@ def maybe_upload_outputs(job: TrainingJob) -> dict:
             presigned = generate_presigned_url(s3_client, bucket, s3_key)
             output_files.append({
                 "filename": f.name,
+                "key": s3_key,
                 "url": url,
+                "size": f.stat().st_size,
                 "noise_variant": _detect_variant(f),
             })
             presigned_urls.append(presigned)

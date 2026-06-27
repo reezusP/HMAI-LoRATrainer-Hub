@@ -45,6 +45,9 @@ UPLOADS_SUBDIR = "_uploads"
 MAX_TRAINING_HOURS = int(os.environ.get("MAX_TRAINING_HOURS", "12"))
 CLEANUP_DATASET_AFTER = os.environ.get("CLEANUP_DATASET_AFTER", "true").lower() == "true"
 
+# Cost basis for the completion webhook's cost_usd (RunPod H100 serverless ~$/sec).
+H100_USD_PER_SEC = float(os.environ.get("H100_USD_PER_SEC", "0.00116"))
+
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
@@ -119,6 +122,9 @@ class TrainingJob:
     # WITHOUT downloading the dataset/weights or training. Used for cheap health
     # checks (RunPod Hub tests, endpoint smoke tests).
     smoke: bool = False
+    # Optional outbound completion webhook (wan-dash integration). When set, the
+    # handler POSTs a {type:"train", status, lora_files, checkpoints, ...} payload here.
+    webhook_url: str | None = None
 
     @property
     def is_wan22(self) -> bool:
@@ -375,6 +381,10 @@ def validate_payload(raw: dict[str, Any]) -> TrainingJob:
     if not isinstance(smoke, bool):
         raise PayloadError("smoke must be a boolean")
 
+    webhook_url = raw.get("webhook_url")
+    if webhook_url is not None and not isinstance(webhook_url, str):
+        raise PayloadError("webhook_url must be a string")
+
     job_id = raw.get("job_id", os.environ.get("RUNPOD_POD_ID", "local"))
 
     return TrainingJob(
@@ -386,6 +396,7 @@ def validate_payload(raw: dict[str, Any]) -> TrainingJob:
         civitai_model_id=civitai_model_id,
         noise_variant=noise_variant,
         smoke=smoke,
+        webhook_url=webhook_url,
     )
 
 

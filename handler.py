@@ -21,6 +21,7 @@ from model_downloader import ensure_aria2c, ensure_model
 from yaml_generator import generate_config
 from trainer import run_training
 from uploader import maybe_upload_outputs
+from webhook import notify_webhook
 
 CIVITAI_DOWNLOADER_DIR = Path("/app/CivitAI_Downloader")
 CIVITAI_DOWNLOADER_REPO = "https://github.com/Hearmeman24/CivitAI_Downloader.git"
@@ -196,6 +197,7 @@ def _handler_inner(event):
         if not result.ok:
             timing["total_s"] = round(time.time() - t_start, 1)
             logger.error(f"Training failed: {result.error}")
+            notify_webhook(job, ok=False, error=result.error, timing=timing)
             return {
                 "ok": False,
                 "error": result.error,
@@ -212,6 +214,9 @@ def _handler_inner(event):
             f"Job complete: {len(upload_result.get('output_files', []))} files, "
             f"total={timing['total_s']}s"
         )
+
+        # --- Notify wan-dash (no-op if no webhook_url) ---
+        notify_webhook(job, ok=True, upload_result=upload_result, timing=timing)
 
         # --- Cleanup ---
         if CLEANUP_DATASET_AFTER:
@@ -232,6 +237,8 @@ def _handler_inner(event):
     except Exception as e:
         logger.error(f"Unhandled error: {e}\n{traceback.format_exc()}")
         timing["total_s"] = round(time.time() - t_start, 1)
+        if job is not None:
+            notify_webhook(job, ok=False, error=str(e), timing=timing)
         return {
             "ok": False,
             "error": str(e),
