@@ -251,11 +251,15 @@ def _handler_inner(event):
                 "timing": timing,
             }
 
+        # --- Free stale volume space FIRST ---
+        # Must precede workspace creation: at full quota even an empty mkdir raises
+        # EDQUOT, so cleanup has to run before _create_workspace touches the volume.
+        # (Deletes/reads work at full quota; only new writes fail.) Uses job.job_id
+        # only, not job.job_dir, so it's safe before the workspace exists.
+        _ensure_free_space(job)
+
         # --- Workspace ---
         _create_workspace(job)
-
-        # --- Free stale volume space (prevents EDQUOT mid-run) ---
-        _ensure_free_space(job)
 
         # --- Dataset ---
         t0 = time.time()
