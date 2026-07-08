@@ -39,6 +39,89 @@ def _create_workspace(job):
         d.mkdir(parents=True, exist_ok=True)
 
 
+def _ensure_free_space(job):
+    """Reclaim stale space on the network volume before a run.
+
+    The volume caches models + keeps per-job output dirs, so multi-model eval runs
+    can fill it and cause `[Errno 122] Disk quota exceeded` mid-training. Before each
+    run we free space by deleting:
+      1. prior job dirs (>1h old) — never the current job, never a concurrently
+         running sibling (age guard); their outputs are already uploaded to R2.
+      2. cached models for OTHER model_types — the CURRENT model's dirs are always
+         spared, so we never re-pull the (huge) Wan repo; other models re-download
+         on demand next time they're used.
+    Best-effort + logged; never fatal.
+    """
+    import os
+    import shutil
+    import time as _time
+
+    from config import JOBS_DIR, MODELS_DIR
+
+    def _dir_size(p):
+        total = 0
+        for root, _dirs, files in os.walk(p):
+            for f in files:
+                fp = os.path.join(root, f)
+                try:
+                    total += os.path.getsize(fp)
+                except OSError:
+                    pass
+        return total
+
+    def _gb(b):
+        return round(b / (1024 ** 3), 1)
+
+    try:
+        spare = set()
+        for item in (getattr(job.model_spec, "downloads", None) or []):
+            sub = getattr(item, "local_subdir", None)
+            if sub:
+                spare.add(sub)
+
+        total, _used, free = shutil.disk_usage(str(MODELS_DIR.parent))
+        logger.info(
+            f"[freespace] volume total={_gb(total)}GB free={_gb(free)}GB; "
+            f"sparing current-model dirs {sorted(spare)}"
+        )
+
+        freed = 0
+
+        # 1) stale prior job dirs (spare current + any <1h-old concurrent sibling)
+        now = _time.time()
+        if JOBS_DIR.exists():
+            for d in JOBS_DIR.iterdir():
+                if not d.is_dir() or d.name == job.job_id:
+                    continue
+                try:
+                    if now - d.stat().st_mtime < 3600:
+                        continue
+                    sz = _dir_size(d)
+                    shutil.rmtree(d, ignore_errors=True)
+                    freed += sz
+                    logger.info(f"[freespace] removed stale job dir {d.name} (~{_gb(sz)}GB)")
+                except OSError as e:
+                    logger.warning(f"[freespace] job dir {d}: {e}")
+
+        # 2) other models' caches (current model spared -> no big re-download)
+        if MODELS_DIR.exists():
+            for d in MODELS_DIR.iterdir():
+                if not d.is_dir() or d.name in spare:
+                    continue
+                try:
+                    sz = _dir_size(d)
+                    shutil.rmtree(d, ignore_errors=True)
+                    freed += sz
+                    logger.info(f"[freespace] removed non-current model cache {d.name} (~{_gb(sz)}GB)")
+                except OSError as e:
+                    logger.warning(f"[freespace] model dir {d}: {e}")
+
+        _t2, _u2, free_after = shutil.disk_usage(str(MODELS_DIR.parent))
+        logger.info(f"[freespace] freed ~{_gb(freed)}GB; free now {_gb(free_after)}GB")
+    except Exception as e:  # never let cleanup break a run
+        logger.warning(f"[freespace] step failed (non-fatal): {e}")
+
+
 def _cleanup_dataset(job):
     """Remove dataset files to free space after training."""
     import shutil
@@ -170,6 +253,9 @@ def _handler_inner(event):
 
         # --- Workspace ---
         _create_workspace(job)
+
+        # --- Free stale volume space (prevents EDQUOT mid-run) ---
+        _ensure_free_space(job)
 
         # --- Dataset ---
         t0 = time.time()
