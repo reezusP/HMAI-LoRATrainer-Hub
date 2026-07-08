@@ -32,6 +32,11 @@ from webhook import notify_webhook
 CIVITAI_DOWNLOADER_DIR = Path("/app/CivitAI_Downloader")
 CIVITAI_DOWNLOADER_REPO = "https://github.com/Hearmeman24/CivitAI_Downloader.git"
 
+# Diagnostics: last _ensure_free_space() report (volume usage breakdown +
+# what was reclaimed). Surfaced in the error output so a quota failure is
+# debuggable from /status without shelling into the worker.
+_LAST_FREESPACE_REPORT = None
+
 
 def _create_workspace(job):
     """Create the job workspace directories."""
@@ -79,11 +84,20 @@ def _ensure_free_space(job):
             if sub:
                 spare.add(sub)
 
+        from config import HF_CACHE_DIR
+
+        report = {"spare": sorted(spare)}
         total, _used, free = shutil.disk_usage(str(MODELS_DIR.parent))
-        logger.info(
-            f"[freespace] volume total={_gb(total)}GB free={_gb(free)}GB; "
-            f"sparing current-model dirs {sorted(spare)}"
-        )
+        report["total_gb"] = _gb(total)
+        report["free_before_gb"] = _gb(free)
+        report["jobs_gb"] = _gb(_dir_size(JOBS_DIR)) if JOBS_DIR.exists() else 0
+        report["hf_cache_gb"] = _gb(_dir_size(HF_CACHE_DIR)) if HF_CACHE_DIR.exists() else 0
+        report["models_children_gb"] = {
+            d.name: _gb(_dir_size(d))
+            for d in (MODELS_DIR.iterdir() if MODELS_DIR.exists() else [])
+            if d.is_dir()
+        }
+        logger.info(f"[freespace] pre-clean report: {report}")
 
         freed = 0
 
@@ -117,7 +131,11 @@ def _ensure_free_space(job):
                     logger.warning(f"[freespace] model dir {d}: {e}")
 
         _t2, _u2, free_after = shutil.disk_usage(str(MODELS_DIR.parent))
-        logger.info(f"[freespace] freed ~{_gb(freed)}GB; free now {_gb(free_after)}GB")
+        report["freed_gb"] = _gb(freed)
+        report["free_after_gb"] = _gb(free_after)
+        global _LAST_FREESPACE_REPORT
+        _LAST_FREESPACE_REPORT = report
+        logger.info(f"[freespace] done: freed ~{_gb(freed)}GB; free now {_gb(free_after)}GB")
     except Exception as e:  # never let cleanup break a run
         logger.warning(f"[freespace] step failed (non-fatal): {e}")
 
@@ -343,6 +361,7 @@ def _handler_inner(event):
             "error": str(e),
             "error_type": "UNKNOWN",
             "timing": timing,
+            "freespace": _LAST_FREESPACE_REPORT,
         }
 
 
